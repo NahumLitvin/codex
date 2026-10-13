@@ -196,6 +196,20 @@ fn parse_theme_name(name: &str) -> Option<EmbeddedThemeName> {
     }
 }
 
+/// True for a theme shipped inside Codex, false for a user `.tmTheme`.
+pub(crate) fn is_bundled_theme(theme: &Theme) -> bool {
+    static NAMES: std::sync::OnceLock<Vec<Option<String>>> = std::sync::OnceLock::new();
+    NAMES
+        .get_or_init(|| {
+            let themes = two_face::theme::extra();
+            two_face::theme::EmbeddedLazyThemeSet::theme_names()
+                .iter()
+                .map(|name| themes.get(*name).name.clone())
+                .collect()
+        })
+        .contains(&theme.name)
+}
+
 /// Build the expected path for a custom theme file.
 fn custom_theme_path(name: &str, codex_home: &Path) -> PathBuf {
     codex_home.join("themes").join(format!("{name}.tmTheme"))
