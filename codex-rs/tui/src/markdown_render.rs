@@ -73,6 +73,7 @@ use std::ops::Range;
 use std::path::Path;
 use std::path::PathBuf;
 
+mod fence_plugins;
 mod inline_directives;
 mod list_spacing;
 mod local_links;
@@ -1128,17 +1129,17 @@ impl<'a, 'policy> Writer<'a, 'policy> {
         if let Some(lang) = self.code_block_lang.take() {
             let code = std::mem::take(&mut self.code_block_buffer);
             if !code.is_empty() {
-                let diagram = if preferences::current().mermaid
-                    && lang == "mermaid"
-                    && mermaid::has_closing_fence(self.input, range, self.code_block_content_end)
-                {
-                    let indent =
-                        Self::spans_display_width(&self.prefix_spans(self.pending_marker_line));
-                    Some(mermaid::render(
-                        &code,
-                        self.wrap_width.map(|width| width.saturating_sub(indent)),
-                        &current_syntax_theme(),
-                    ))
+                let closed =
+                    mermaid::has_closing_fence(self.input, range, self.code_block_content_end);
+                let indent =
+                    Self::spans_display_width(&self.prefix_spans(self.pending_marker_line));
+                let width = self.wrap_width.map(|width| width.saturating_sub(indent));
+                let diagram = if !closed {
+                    None
+                } else if let Some(drawn) = fence_plugins::render(&lang, &code, width) {
+                    Some(drawn)
+                } else if preferences::current().mermaid && lang == "mermaid" {
+                    Some(mermaid::render(&code, width, &current_syntax_theme()))
                 } else {
                     None
                 };

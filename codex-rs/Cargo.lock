@@ -4791,6 +4791,7 @@ dependencies = [
 name = "codex-tui"
 version = "0.0.0"
 dependencies = [
+ "ansi-to-tui",
  "anyhow",
  "app_test_support",
  "arboard",
