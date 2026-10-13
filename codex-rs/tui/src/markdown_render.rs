@@ -45,6 +45,7 @@ use crate::render::highlight::current_syntax_theme;
 use crate::render::highlight::foreground_style_for_scopes;
 use crate::render::highlight::foreground_style_for_scopes_with_theme;
 use crate::render::highlight::highlight_code_to_lines;
+use crate::render::highlight::is_bundled_theme;
 use crate::render::line_utils::line_to_static;
 use crate::style::accent_color;
 use crate::style::table_separator_style;
@@ -133,13 +134,22 @@ impl Default for MarkdownStyles {
 
 impl MarkdownStyles {
     fn for_theme(theme: &syntect::highlighting::Theme) -> Self {
+        let custom = !is_bundled_theme(theme);
+        let scoped = |base: Style, scopes: &[&str]| match custom
+            .then(|| foreground_style_for_scopes_with_theme(theme, scopes))
+            .flatten()
+        {
+            Some(fg) => base.patch(fg),
+            None => base,
+        };
+        let heading = |base: Style| scoped(base, &["markup.heading"]);
         Self {
-            h1: Style::new().bold().underlined(),
-            h2: Style::new().bold(),
-            h3: Style::new().bold().italic(),
-            h4: Style::new().italic(),
-            h5: Style::new().italic(),
-            h6: Style::new().italic(),
+            h1: heading(Style::new().bold().underlined()),
+            h2: heading(Style::new().bold()),
+            h3: heading(Style::new().bold().italic()),
+            h4: heading(Style::new().italic()),
+            h5: heading(Style::new().italic()),
+            h6: heading(Style::new().italic()),
             code: foreground_style_for_scopes_with_theme(
                 theme,
                 &[
@@ -148,13 +158,16 @@ impl MarkdownStyles {
                 ],
             )
             .unwrap_or_else(|| Style::new().fg(accent_color())),
-            emphasis: Style::new().italic(),
-            strong: Style::new().bold(),
+            emphasis: scoped(Style::new().italic(), &["markup.italic"]),
+            strong: scoped(Style::new().bold(), &["markup.bold"]),
             strikethrough: Style::new().crossed_out(),
-            ordered_list_marker: Style::new().light_blue(),
-            unordered_list_marker: Style::new(),
-            link: Style::new().fg(accent_color()).underlined(),
-            blockquote: Style::new().green(),
+            ordered_list_marker: scoped(Style::new().light_blue(), &["markup.list"]),
+            unordered_list_marker: scoped(Style::new(), &["markup.list"]),
+            link: scoped(
+                Style::new().fg(accent_color()).underlined(),
+                &["markup.underline.link"],
+            ),
+            blockquote: scoped(Style::new().green(), &["markup.quote"]),
         }
     }
 }
@@ -2573,6 +2586,30 @@ mod markdown_render_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn custom_theme_colors_markdown_prose() {
+        let tm = r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>name</key><string>custom-test</string><key>settings</key><array>
+<dict><key>settings</key><dict><key>foreground</key><string>#cccccc</string></dict></dict>
+<dict><key>scope</key><string>markup.bold</string><key>settings</key><dict><key>foreground</key><string>#ff0000</string></dict></dict>
+</array></dict></plist>"#;
+        let theme =
+            syntect::highlighting::ThemeSet::load_from_reader(&mut std::io::Cursor::new(tm))
+                .expect("theme parses");
+        let styles = MarkdownStyles::for_theme(&theme);
+        assert_eq!(
+            styles.strong.fg,
+            Some(ratatui::style::Color::Rgb(255, 0, 0))
+        );
+        assert!(
+            styles
+                .strong
+                .add_modifier
+                .contains(ratatui::style::Modifier::BOLD)
+        );
+        assert_eq!(styles.blockquote, Style::new().green());
+    }
+
     use super::*;
     use pretty_assertions::assert_eq;
     use ratatui::style::Stylize;
